@@ -1,48 +1,40 @@
-# %%
-
 import os
 import glob
 import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 # TODO: incorporate uncertainty estimates in the plots, box plots per year/expedition
 
 # TODO: build conmplexity of plots, single points -> lines -> uncertainty/boxplots -> colour boxplots by month of the (half) year
 
 # TODO: timeseries - can just do it for surface...
-
-# TODO: 3D plots of CTD Transects!
-
 variables = ["phyc", "temperature", "salinity", "o2", "no3", "po4"]
-
-base_dir = os.getcwd()
 
 dict_vars = {}
 for var in variables:
     print(f"Processing variable: {var}")
-    filename = "ctd.zarr" if var in ["temperature", "salinity"] else "ctd_bgc.zarr"
-    grp_dirs = sorted(glob.glob(os.path.join(base_dir, "GRP????/results/", filename)))
+    filename = "ctd.nc" if var in ["temperature", "salinity"] else "ctd_bgc.nc"
+    grp_dirs = sorted(
+        glob.glob(os.path.expanduser(f"../data/GROUP*/results/{filename}"))
+    )
 
     var_values = []
     times = []
 
     tmp = {}
-    for zarr_path in grp_dirs:
-        ds = xr.open_zarr(zarr_path)
+    for nc_path in grp_dirs:
+        ds = xr.open_dataset(nc_path).isel(obs=0)  # surface only
 
         # extract variable values and time
         var_values.append(ds[var].values.flatten())
-        times.append(ds["time"].values[0][0])
+        times.append(ds["time"].values[0])
 
     # organise to dict
     tmp["values"], tmp["time"] = var_values, times
 
     # master dict
     dict_vars[var] = tmp
-
-# %%
 
 plot_dict = {
     "phyc": {
@@ -77,9 +69,16 @@ plot_dict = {
     },
 }
 
-# %%
 
 combined_vars = [v for v in variables if v not in ["no3", "po4"]] + ["no3_po4"]
+
+####
+
+# configs
+LINES = False
+VARIABILITY = True
+MARKERSIZE = 6
+
 fig, axs = plt.subplots(
     len(combined_vars), 1, figsize=(10, 10), dpi=96, sharex=True, sharey=False
 )
@@ -89,22 +88,34 @@ for i, ax in enumerate(axs):
         var = combined_vars[i]
         color = plot_dict[var]["color"]
 
-        ax.scatter(
-            dict_vars[var]["time"],
-            [np.nanmean(values) for values in dict_vars[var]["values"]],
+        times = dict_vars[var]["time"]
+        data = [np.nanmean(values) for values in dict_vars[var]["values"]]
+        stds = [np.nanstd(values) for values in dict_vars[var]["values"]]
+
+        # Sort all arrays by times
+        sort_idx = np.argsort(times)
+        times = np.array(times)[sort_idx]
+        data = np.array(data)[sort_idx]
+        stds = np.array(stds)[sort_idx]
+
+        ax.errorbar(
+            times,
+            data,
+            yerr=stds if VARIABILITY else 0.0,
             color=color,
-            zorder=3,
-            s=50,
+            fmt="o",
+            markersize=MARKERSIZE,
         )
 
-        ax.plot(
-            dict_vars[var]["time"],
-            [np.nanmean(values) for values in dict_vars[var]["values"]],
-            linestyle="dotted",
-            alpha=1.0,
-            color=color,
-            lw=2.25,
-        )
+        if LINES:
+            ax.plot(
+                times,
+                data,
+                linestyle="dotted",
+                alpha=1.0,
+                color=color,
+                lw=2.25,
+            )
 
         ax.set_title(f"{plot_dict[var]['label']}", fontsize=12)
         ax.set_ylabel(plot_dict[var]["units"], fontsize=11)
@@ -112,42 +123,60 @@ for i, ax in enumerate(axs):
         color_no3 = plot_dict["no3"]["color"]
         color_po4 = plot_dict["po4"]["color"]
 
-        ax.scatter(
-            dict_vars["no3"]["time"],
-            [np.nanmean(values) for values in dict_vars["no3"]["values"]],
+        no3_data = [np.nanmean(values) for values in dict_vars["no3"]["values"]]
+        po4_data = [np.nanmean(values) for values in dict_vars["po4"]["values"]]
+        no3_stds = [np.nanstd(values) for values in dict_vars["no3"]["values"]]
+        po4_stds = [np.nanstd(values) for values in dict_vars["po4"]["values"]]
+        # Sort by times
+        no3_data = np.array(no3_data)[sort_idx]
+        po4_data = np.array(po4_data)[sort_idx]
+        no3_stds = np.array(no3_stds)[sort_idx]
+        po4_stds = np.array(po4_stds)[sort_idx]
+
+        ax.errorbar(
+            times,
+            no3_data,
+            yerr=no3_stds if VARIABILITY else 0.0,
             color=color_no3,
-            zorder=3,
-            s=50,
+            fmt="o",
+            markersize=MARKERSIZE,
             label=plot_dict["no3"]["label"],
         )
-        ax.plot(
-            dict_vars["no3"]["time"],
-            [np.nanmean(values) for values in dict_vars["no3"]["values"]],
-            linestyle="dotted",
-            alpha=1.0,
-            color=color_no3,
-            lw=2.25,
-        )
+
+        if LINES:
+            ax.plot(
+                times,
+                no3_data,
+                linestyle="dotted",
+                alpha=1.0,
+                color=color_no3,
+                lw=2.25,
+            )
+
         ax.set_ylabel(plot_dict["no3"]["units"], fontsize=11, color=color_no3)
         ax.tick_params(axis="y", labelcolor=color_no3)
 
         ax2 = ax.twinx()
-        ax2.scatter(
-            dict_vars["po4"]["time"],
-            [np.nanmean(values) for values in dict_vars["po4"]["values"]],
+        ax2.errorbar(
+            times,
+            po4_data,
+            yerr=po4_stds if VARIABILITY else 0.0,
             color=color_po4,
-            zorder=3,
-            s=50,
+            fmt="o",
+            markersize=MARKERSIZE,
             label=plot_dict["po4"]["label"],
         )
-        ax2.plot(
-            dict_vars["po4"]["time"],
-            [np.nanmean(values) for values in dict_vars["po4"]["values"]],
-            linestyle="dotted",
-            alpha=1.0,
-            color=color_po4,
-            lw=2.25,
-        )
+
+        if LINES:
+            ax2.plot(
+                times,
+                po4_data,
+                linestyle="dotted",
+                alpha=1.0,
+                color=color_po4,
+                lw=2.25,
+            )
+
         ax2.set_ylabel(plot_dict["po4"]["units"], fontsize=11, color=color_po4)
         ax2.tick_params(axis="y", labelcolor=color_po4)
 
@@ -171,4 +200,3 @@ for i, ax in enumerate(axs):
 
 plt.tight_layout()
 plt.show()
-# %%
