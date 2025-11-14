@@ -8,3 +8,7 @@ Launch the cloud instance by clicking the badge below:
 
 
 This will drop you into JupyterLab environment with all necessary dependencies installed.
+
+```{info}
+This repository is intended for use by students at Utrecht University primarily, but is open to anyone interested in analysing VirtualShip simulation output.
+```
